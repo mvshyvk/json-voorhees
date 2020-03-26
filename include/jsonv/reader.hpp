@@ -30,14 +30,21 @@ class value;
 /// \ingroup Serialization
 /// \{
 
+/// A reader reads from some JSON source into an \c ast_node sequence.
 class JSONV_PUBLIC reader final
 {
 public:
-    /// Create a reader which reads from the given \a index.
+    /// Create a reader which reads from the given \a index. The source text \a index refers to must stay in memory
+    /// while this instance is used.
     explicit reader(parse_index index);
 
+    /// \{
     /// Create a reader which reads from an in-memory \a value.
-    explicit reader(const value* value);
+    ///
+    /// TODO(#150): Implement these.
+    explicit reader(const value& value);
+    explicit reader(value&&      value);
+    /// \}
 
     /// \{
     /// Create a reader which reads from JSON \a source.
@@ -55,6 +62,12 @@ public:
     explicit reader(std::string&& source);
     explicit reader(std::string&& source, const parse_options& parse_options);
     /// \}
+
+    reader(const reader&)            = delete;
+    reader& operator=(const reader&) = delete;
+
+    reader(reader&& src)        noexcept = default;
+    reader& operator=(reader&&) noexcept = default;
 
     ~reader() noexcept;
 

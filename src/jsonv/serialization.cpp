@@ -14,6 +14,7 @@
 #include <jsonv/serialization/function_adapter.hpp>
 #include <jsonv/serialization/function_extractor.hpp>
 #include <jsonv/serialization/function_serializer.hpp>
+#include <jsonv/reader.hpp>
 #include <jsonv/value.hpp>
 
 #include <cstdint>
@@ -26,10 +27,10 @@ namespace jsonv
 {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// extractor                                                                                                          //
+// extractor_old                                                                                                      //
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-extractor::~extractor() noexcept = default;
+extractor_old::~extractor_old() noexcept = default;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // serializer                                                                                                         //
@@ -42,159 +43,6 @@ serializer::~serializer() noexcept = default;
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 adapter::~adapter() noexcept = default;
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// duplicate_type_error                                                                                               //
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-static std::string make_duplicate_type_errmsg(const std::string& operation, const std::type_index& type)
-{
-    std::ostringstream os;
-    os << "Already have " << operation << " for type " << demangle(type.name());
-    return os.str();
-}
-
-duplicate_type_error::duplicate_type_error(const std::string& operation, const std::type_index& type) :
-        std::invalid_argument(make_duplicate_type_errmsg(operation, type)),
-        _type_index(type)
-{ }
-
-duplicate_type_error::~duplicate_type_error() noexcept = default;
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// extraction_error::problem                                                                                          //
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-extraction_error::problem::problem(jsonv::path path, std::string message, std::exception_ptr cause) noexcept :
-        _path(std::move(path)),
-        _message(std::move(message)),
-        _cause(std::move(cause))
-{
-    if (_message.empty())
-        _message = "Unknown problem";
-}
-
-extraction_error::problem::problem(jsonv::path path, std::string message) noexcept :
-        problem(std::move(path), std::move(message), nullptr)
-{ }
-
-extraction_error::problem::problem(jsonv::path path, std::exception_ptr cause) noexcept :
-        problem(std::move(path),
-                [&]() -> std::string
-                {
-                    try
-                    {
-                        std::rethrow_exception(cause);
-                    }
-                    catch (const std::exception& ex)
-                    {
-                        return ex.what();
-                    }
-                    catch (...)
-                    {
-                        std::ostringstream os;
-                        os << "Exception with type " << current_exception_type_name();
-                        return std::move(os).str();
-                    }
-                }(),
-                cause
-               )
-{ }
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// extraction_error                                                                                                   //
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-static std::string make_extraction_error_errmsg(const extraction_error::problem_list& problems)
-{
-    std::ostringstream os;
-
-    auto write_problem =
-        [&](const extraction_error::problem& problem)
-        {
-            if (!problem.path().empty())
-                os << " at " << problem.path() << ": ";
-
-            os << problem.message();
-        };
-
-    if (problems.size() == 0U)
-    {
-        os << "Extraction error with unspecified problem";
-    }
-    else if (problems.size() == 1U)
-    {
-        os << "Extraction error";
-        write_problem(problems[0]);
-    }
-    else if (problems.size() > 1U)
-    {
-        os << problems.size() << " extraction errors:";
-
-        for (const auto& problem : problems)
-        {
-            os << std::endl;
-            os << " -";
-            write_problem(problem);
-        }
-    }
-
-    return std::move(os).str();
-}
-
-extraction_error::extraction_error(problem_list problems) noexcept :
-        std::runtime_error(make_extraction_error_errmsg(problems)),
-        _problems(std::move(problems))
-{ }
-
-template <typename... TArgs>
-extraction_error::extraction_error(std::in_place_t, TArgs&&... args) noexcept :
-        extraction_error(problem_list({ problem(std::forward<TArgs>(args)...) }))
-{ }
-
-extraction_error::extraction_error(jsonv::path path, std::string message, std::exception_ptr cause) noexcept :
-        extraction_error(std::in_place, std::move(path), std::move(message), std::move(cause))
-{ }
-
-extraction_error::extraction_error(jsonv::path path, std::string message) noexcept :
-        extraction_error(std::in_place, std::move(path), std::move(message))
-{ }
-
-extraction_error::extraction_error(jsonv::path path, std::exception_ptr cause) noexcept :
-        extraction_error(std::in_place, std::move(path), std::move(cause))
-{ }
-
-extraction_error::~extraction_error() noexcept = default;
-
-const path& extraction_error::path() const noexcept
-{
-    if (_problems.empty())
-    {
-        JSONV_UNLIKELY
-
-        static const jsonv::path empty_path;
-        return empty_path;
-    }
-    else
-    {
-        return _problems[0].path();
-    }
-}
-
-const std::exception_ptr& extraction_error::nested_ptr() const noexcept
-{
-    if (_problems.empty())
-    {
-        JSONV_UNLIKELY
-
-        static const std::exception_ptr empty_ex;
-        return empty_ex;
-    }
-    else
-    {
-        return _problems[0].nested_ptr();
-    }
-}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // no_extractor                                                                                                       //
@@ -484,7 +332,7 @@ void formats::extract(const std::type_info&     type,
                       const extraction_context& context
                      ) const
 {
-    get_extractor(type).extract(context, from, into);
+    static_cast<const extractor_old&>(get_extractor(type)).extract(context, from, into);
 }
 
 const serializer& formats::get_serializer(std::type_index type) const
@@ -735,77 +583,6 @@ context_base::context_base() :
 { }
 
 context_base::~context_base() noexcept = default;
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// extraction_context                                                                                                 //
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-extraction_context::extraction_context(jsonv::formats        fmt,
-                                       const jsonv::version& ver,
-                                       jsonv::path           p,
-                                       const void*           userdata
-                                      ) :
-        context_base(std::move(fmt), ver, userdata),
-        _path(std::move(p))
-{ }
-
-extraction_context::extraction_context() :
-        context_base()
-{ }
-
-extraction_context::~extraction_context() noexcept = default;
-
-void extraction_context::extract(const std::type_info& type, const value& from, void* into) const
-{
-    try
-    {
-        formats().extract(type, from, into, *this);
-    }
-    catch (const extraction_error&)
-    {
-        throw;
-    }
-    catch (const std::exception& ex)
-    {
-        throw extraction_error(path(), ex.what(), std::current_exception());
-    }
-    catch (...)
-    {
-        throw extraction_error(path(),
-                               std::string("Exception with type ") + current_exception_type_name(),
-                               std::current_exception()
-                              );
-    }
-}
-
-void extraction_context::extract_sub(const std::type_info& type,
-                                     const value&          from,
-                                     jsonv::path           subpath,
-                                     void*                 into
-                                    ) const
-{
-    extraction_context sub(*this);
-    sub._path += subpath;
-    try
-    {
-        return sub.extract(type, from.at_path(subpath), into);
-    }
-    catch (const extraction_error&)
-    {
-        throw;
-    }
-    catch (const std::exception& ex)
-    {
-        throw extraction_error(sub.path(), ex.what(), std::current_exception());
-    }
-    catch (...)
-    {
-        throw extraction_error(sub.path(),
-                               std::string("Exception with type ") + current_exception_type_name(),
-                               std::current_exception()
-                              );
-    }
-}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // serialization_context                                                                                              //

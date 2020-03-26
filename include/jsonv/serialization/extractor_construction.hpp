@@ -22,7 +22,7 @@ namespace jsonv
 /// \c extraction_context.
 template <typename T>
 class extractor_construction :
-        public extractor
+        public extractor_old
 {
 public:
     virtual const std::type_info& get_type() const override

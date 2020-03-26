@@ -21,7 +21,7 @@ namespace jsonv
 /// An \c extractor for the type \c T.
 template <typename T>
 class extractor_for :
-        public extractor
+        public extractor_old
 {
 public:
     virtual const std::type_info& get_type() const override

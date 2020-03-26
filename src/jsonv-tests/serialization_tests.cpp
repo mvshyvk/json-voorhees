@@ -53,7 +53,7 @@ struct my_thing
             c(std::move(c))
     { }
 
-    static const extractor* get_extractor()
+    static const extractor_old* get_extractor()
     {
         static extractor_construction<my_thing> instance;
         return &instance;
@@ -188,7 +188,7 @@ TEST(extract_object)
 TEST(extract_object_with_unique_extractor)
 {
     formats fmts = formats::compose({ formats::defaults() });
-    fmts.register_extractor(std::unique_ptr<extractor>(new extractor_construction<my_thing>()));
+    fmts.register_extractor(std::unique_ptr<extractor_old>(new extractor_construction<my_thing>()));
 
     my_thing res = extract<my_thing>(parse(R"({ "a": 1, "b": 2, "c": "thing" })"), fmts);
     ensure_eq(my_thing(1, 2, "thing"), res);
